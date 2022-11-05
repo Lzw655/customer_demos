@@ -142,8 +142,6 @@ void app_main(void)
     esp_lcd_panel_io_handle_t io_handle;
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i80(i80_bus, &io_config, &io_handle));
 
-    // esp_lcd_panel_io_tx_param(io_handle, 0xff, NULL, 0);
-
     ESP_LOGI(TAG, "Install ST7789 panel driver");
     esp_lcd_panel_handle_t panel_handle = NULL;
     esp_lcd_panel_dev_config_t panel_config = {
