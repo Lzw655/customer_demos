@@ -6,19 +6,20 @@
 
 #include <stdlib.h>
 #include <sys/cdefs.h>
-#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/gpio.h"
+#include "esp_check.h"
+#include "esp_lcd_panel_commands.h"
 #include "esp_lcd_panel_interface.h"
 #include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
-#include "esp_lcd_panel_commands.h"
-#include "driver/gpio.h"
+#include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
-#include "esp_check.h"
 
-static const char *TAG = "lcd_panel.st7789";
+#include "sdkconfig.h"
+
+static const char *TAG = "lcd_panel_st7789";
 
 static esp_err_t panel_st7789_del(esp_lcd_panel_t *panel);
 static esp_err_t panel_st7789_reset(esp_lcd_panel_t *panel);
@@ -28,7 +29,11 @@ static esp_err_t panel_st7789_invert_color(esp_lcd_panel_t *panel, bool invert_c
 static esp_err_t panel_st7789_mirror(esp_lcd_panel_t *panel, bool mirror_x, bool mirror_y);
 static esp_err_t panel_st7789_swap_xy(esp_lcd_panel_t *panel, bool swap_axes);
 static esp_err_t panel_st7789_set_gap(esp_lcd_panel_t *panel, int x_gap, int y_gap);
-static esp_err_t panel_st7789_disp_on_off(esp_lcd_panel_t *panel, bool off);
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+static esp_err_t panel_st7789_disp_on_off(esp_lcd_panel_t *panel, bool on_off);
+#else
+static esp_err_t panel_st7789_disp_off(esp_lcd_panel_t *panel, bool off);
+#endif
 
 typedef struct {
     esp_lcd_panel_t base;
@@ -44,9 +49,6 @@ typedef struct {
 
 esp_err_t lcd_new_panel_st7789(const esp_lcd_panel_io_handle_t io, const esp_lcd_panel_dev_config_t *panel_dev_config, esp_lcd_panel_handle_t *ret_panel)
 {
-#if CONFIG_LCD_ENABLE_DEBUG_LOG
-    esp_log_level_set(TAG, ESP_LOG_DEBUG);
-#endif
     esp_err_t ret = ESP_OK;
     st7789_panel_t *st7789 = NULL;
     ESP_GOTO_ON_FALSE(io && panel_dev_config && ret_panel, ESP_ERR_INVALID_ARG, err, TAG, "invalid argument");
@@ -97,7 +99,11 @@ esp_err_t lcd_new_panel_st7789(const esp_lcd_panel_io_handle_t io, const esp_lcd
     st7789->base.set_gap = panel_st7789_set_gap;
     st7789->base.mirror = panel_st7789_mirror;
     st7789->base.swap_xy = panel_st7789_swap_xy;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
     st7789->base.disp_on_off = panel_st7789_disp_on_off;
+#else
+    st7789->base.disp_off = panel_st7789_disp_off;
+#endif
     *ret_panel = &(st7789->base);
     ESP_LOGD(TAG, "new st7789 panel @%p", st7789);
 
@@ -192,6 +198,7 @@ static esp_err_t panel_st7789_init(esp_lcd_panel_t *panel)
     // vTaskDelay(pdMS_TO_TICKS(120));
     esp_lcd_panel_io_tx_param(io, LCD_CMD_SLPOUT, NULL, 0);
     vTaskDelay(pdMS_TO_TICKS(120));
+    esp_lcd_panel_io_tx_param(io, LCD_CMD_COLMOD, (uint8_t []){st7789->colmod_cal}, 1);
     esp_lcd_panel_io_tx_param(io, LCD_CMD_MADCTL, (uint8_t []){st7789->madctl_val}, 1);
     int cmd = 0;
     while (vendor_specific_init[cmd].data_bytes != 0xff) {
@@ -293,6 +300,7 @@ static esp_err_t panel_st7789_set_gap(esp_lcd_panel_t *panel, int x_gap, int y_g
     return ESP_OK;
 }
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 static esp_err_t panel_st7789_disp_on_off(esp_lcd_panel_t *panel, bool on_off)
 {
     st7789_panel_t *st7789 = __containerof(panel, st7789_panel_t, base);
@@ -306,3 +314,19 @@ static esp_err_t panel_st7789_disp_on_off(esp_lcd_panel_t *panel, bool on_off)
     esp_lcd_panel_io_tx_param(io, command, NULL, 0);
     return ESP_OK;
 }
+#else
+static esp_err_t panel_st7789_disp_off(esp_lcd_panel_t *panel, bool off)
+{
+    st7789_panel_t *st7789 = __containerof(panel, st7789_panel_t, base);
+    esp_lcd_panel_io_handle_t io = st7789->io;
+    int command = 0;
+    if (off) {
+        command = LCD_CMD_DISPOFF;
+    } else {
+        command = LCD_CMD_DISPON;
+    }
+    esp_lcd_panel_io_tx_param(io, command, NULL, 0);
+    return ESP_OK;
+}
+#endif
+

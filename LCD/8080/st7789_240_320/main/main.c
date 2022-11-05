@@ -94,7 +94,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Initialize i80 bus");
     esp_lcd_i80_bus_config_t i80_config = {
         .bus_width = 16,
-        .clk_src = LCD_CLK_SRC_DEFAULT,
+        .clk_src = LCD_CLK_SRC_PLL160M,
         .max_transfer_bytes = LCD_H_RES * LCD_V_RES * 2 + 10,
         .psram_trans_align = 64,
         .sram_trans_align = 4,
@@ -134,7 +134,6 @@ void app_main(void)
             .dc_dummy_level = 0,
             .dc_idle_level = 0,
         },
-        .flags.swap_color_bytes = 1,
         .trans_queue_depth = 10,
         .on_color_trans_done = notify_lvgl_flush_ready,
         .user_ctx = (void *)&disp_drv,
@@ -153,7 +152,11 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true));
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
+#else
+    ESP_ERROR_CHECK(esp_lcd_panel_disp_off(panel_handle, false));
+#endif
 
     if (PIN_NUM_BK_LIGHT != GPIO_NUM_NC) {
         ESP_LOGI(TAG, "Turn on LCD backlight");
