@@ -33,7 +33,6 @@ static lv_disp_drv_t disp_drv;
 #define PIN_NUM_LCD_WR          (GPIO_NUM_37)
 #define PIN_NUM_LCD_CS          (GPIO_NUM_36)
 #define PIN_NUM_LCD_DC          (GPIO_NUM_38)
-#define PIN_NUM_LCD_RD          (GPIO_NUM_35)
 #define PIN_NUM_LCD_DATA0       (GPIO_NUM_3)
 #define PIN_NUM_LCD_DATA1       (GPIO_NUM_4)
 #define PIN_NUM_LCD_DATA2       (GPIO_NUM_5)
