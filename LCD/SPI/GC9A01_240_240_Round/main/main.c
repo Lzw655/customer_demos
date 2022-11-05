@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
+#include "driver/spi_master.h"
 #include "esp_err.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
@@ -16,49 +17,36 @@
 #include "esp_timer.h"
 
 #include "lvgl.h"
-#include "lcd_panel_st7789.h"
+#include "lcd_panel_gc9a01.h"
 
 static const char *TAG = "example";
 
-static lv_disp_drv_t disp_drv;
+// Using SPI2 in the example
+#define LCD_HOST                (SPI2_HOST)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////// Please update the following configuration according to your LCD spec //////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define LCD_PIXEL_CLOCK_HZ      (20 * 1000 * 1000)
-#define LCD_BK_LIGHT_ON_LEVEL   (1)
-#define LCD_BK_LIGHT_OFF_LEVEL  (!EXAMPLE_LCD_BK_LIGHT_ON_LEVEL)
+#define LCD_PIXEL_CLOCK_HZ      (80 * 1000 * 1000)
+#define LCD_BK_LIGHT_ON_LEVEL   (0)
+#define LCD_BK_LIGHT_OFF_LEVEL  (!LCD_BK_LIGHT_ON_LEVEL)
 
-#define PIN_NUM_LCD_WR          (GPIO_NUM_37)
-#define PIN_NUM_LCD_CS          (GPIO_NUM_36)
-#define PIN_NUM_LCD_DC          (GPIO_NUM_38)
-#define PIN_NUM_LCD_DATA0       (GPIO_NUM_3)
-#define PIN_NUM_LCD_DATA1       (GPIO_NUM_4)
-#define PIN_NUM_LCD_DATA2       (GPIO_NUM_5)
-#define PIN_NUM_LCD_DATA3       (GPIO_NUM_6)
-#define PIN_NUM_LCD_DATA4       (GPIO_NUM_7)
-#define PIN_NUM_LCD_DATA5       (GPIO_NUM_8)
-#define PIN_NUM_LCD_DATA6       (GPIO_NUM_9)
-#define PIN_NUM_LCD_DATA7       (GPIO_NUM_10)
-#define PIN_NUM_LCD_DATA8       (GPIO_NUM_11)
-#define PIN_NUM_LCD_DATA9       (GPIO_NUM_12)
-#define PIN_NUM_LCD_DATA10      (GPIO_NUM_13)
-#define PIN_NUM_LCD_DATA11      (GPIO_NUM_14)
-#define PIN_NUM_LCD_DATA12      (GPIO_NUM_15)
-#define PIN_NUM_LCD_DATA13      (GPIO_NUM_16)
-#define PIN_NUM_LCD_DATA14      (GPIO_NUM_17)
-#define PIN_NUM_LCD_DATA15      (GPIO_NUM_18)
-#define PIN_NUM_LCD_RST         (GPIO_NUM_NC)
-#define PIN_NUM_BK_LIGHT        (GPIO_NUM_21)
+#define PIN_NUM_LCD_CS          (GPIO_NUM_10)
+#define PIN_NUM_LCD_SCLK        (GPIO_NUM_1)
+#define PIN_NUM_LCD_DC          (GPIO_NUM_4)
+#define PIN_NUM_LCD_MOSI        (GPIO_NUM_0)
+#define PIN_NUM_LCD_MISO        (GPIO_NUM_NC)
+#define PIN_NUM_LCD_RST         (GPIO_NUM_2)
+#define PIN_NUM_BK_LIGHT        (GPIO_NUM_5)
 
 #define LCD_H_RES               (240)
-#define LCD_V_RES               (320)
+#define LCD_V_RES               (240)
 
 // Bit number used to represent command and parameter
-#define LCD_CMD_BITS            (8)
-#define LCD_PARAM_BITS          (8)
+#define LCD_CMD_BITS           (8)
+#define LCD_PARAM_BITS         (8)
 
-#define LVGL_TICK_PERIOD_MS     (2)
+#define LVGL_TICK_PERIOD_MS    (2)
 
 extern void lvgl_demo_ui(lv_obj_t *disp);
 
@@ -89,65 +77,43 @@ static void increase_lvgl_tick(void *arg)
 void app_main(void)
 {
     static lv_disp_draw_buf_t disp_buf; // contains internal graphic buffer(s) called draw buffer(s)
+    static lv_disp_drv_t disp_drv;      // contains callback functions
 
-    ESP_LOGI(TAG, "Initialize i80 bus");
-    esp_lcd_i80_bus_config_t i80_config = {
-        .bus_width = 16,
-        .clk_src = LCD_CLK_SRC_PLL160M,
-        .max_transfer_bytes = LCD_H_RES * LCD_V_RES * 2 + 10,
-        .psram_trans_align = 64,
-        .sram_trans_align = 4,
-        .dc_gpio_num = PIN_NUM_LCD_DC,
-        .wr_gpio_num = PIN_NUM_LCD_WR,
-        .data_gpio_nums = {
-            PIN_NUM_LCD_DATA0,
-            PIN_NUM_LCD_DATA1,
-            PIN_NUM_LCD_DATA2,
-            PIN_NUM_LCD_DATA3,
-            PIN_NUM_LCD_DATA4,
-            PIN_NUM_LCD_DATA5,
-            PIN_NUM_LCD_DATA6,
-            PIN_NUM_LCD_DATA7,
-            PIN_NUM_LCD_DATA8,
-            PIN_NUM_LCD_DATA9,
-            PIN_NUM_LCD_DATA10,
-            PIN_NUM_LCD_DATA11,
-            PIN_NUM_LCD_DATA12,
-            PIN_NUM_LCD_DATA13,
-            PIN_NUM_LCD_DATA14,
-            PIN_NUM_LCD_DATA15,
-        },
+    ESP_LOGI(TAG, "Initialize SPI bus");
+    spi_bus_config_t buscfg = {
+        .sclk_io_num = PIN_NUM_LCD_SCLK,
+        .mosi_io_num = PIN_NUM_LCD_MOSI,
+        .miso_io_num = PIN_NUM_LCD_MISO,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = LCD_H_RES * LCD_V_RES * sizeof(uint16_t) + 10,
     };
-    esp_lcd_i80_bus_handle_t i80_bus;
-    ESP_ERROR_CHECK(esp_lcd_new_i80_bus(&i80_config, &i80_bus));
+    ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
 
     ESP_LOGI(TAG, "Install panel IO");
-    esp_lcd_panel_io_i80_config_t io_config = {
-        .pclk_hz = LCD_PIXEL_CLOCK_HZ,
+    esp_lcd_panel_io_handle_t io_handle = NULL;
+    esp_lcd_panel_io_spi_config_t io_config = {
+        .dc_gpio_num = PIN_NUM_LCD_DC,
         .cs_gpio_num = PIN_NUM_LCD_CS,
+        .pclk_hz = LCD_PIXEL_CLOCK_HZ,
         .lcd_cmd_bits = LCD_CMD_BITS,
         .lcd_param_bits = LCD_PARAM_BITS,
-        .dc_levels = {
-            .dc_cmd_level = 0,
-            .dc_data_level = 1,
-            .dc_dummy_level = 0,
-            .dc_idle_level = 0,
-        },
+        .spi_mode = 0,
         .trans_queue_depth = 10,
         .on_color_trans_done = notify_lvgl_flush_ready,
-        .user_ctx = (void *)&disp_drv,
+        .user_ctx = &disp_drv,
     };
-    esp_lcd_panel_io_handle_t io_handle;
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_i80(i80_bus, &io_config, &io_handle));
+    // Attach the LCD to the SPI bus
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
 
-    ESP_LOGI(TAG, "Install ST7789 panel driver");
+    ESP_LOGI(TAG, "Install GC9A01 panel driver");
     esp_lcd_panel_handle_t panel_handle = NULL;
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = PIN_NUM_LCD_RST,
         .color_space = ESP_LCD_COLOR_SPACE_RGB,
         .bits_per_pixel = 16,
     };
-    ESP_ERROR_CHECK(lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle));
+    ESP_ERROR_CHECK(lcd_new_panel_gc9a01(io_handle, &panel_config, &panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true));
@@ -199,10 +165,14 @@ void app_main(void)
 
     lvgl_demo_ui(lv_scr_act());
 
+    uint32_t task_delay_ms = 0;
     while (1) {
-        // raise the task priority of LVGL and/or reduce the handler period can improve the performance
-        vTaskDelay(pdMS_TO_TICKS(10));
-        // The task running lv_timer_handler should have lower priority than that running `lv_tick_inc`
-        lv_timer_handler();
+        task_delay_ms = lv_timer_handler();
+        if (task_delay_ms > 500) {
+            task_delay_ms = 500;
+        } else if (task_delay_ms < 5) {
+            task_delay_ms = 5;
+        }
+        vTaskDelay(pdMS_TO_TICKS(task_delay_ms));
     }
 }

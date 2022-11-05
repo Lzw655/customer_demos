@@ -9,7 +9,7 @@
             "cStandard": "c17",
             "cppStandard": "c++14",
             "intelliSenseMode": "linux-clang-x64",
-            "compileCommands": "/home/liu/Desktop/customer/customer_demos/LCD/8080/st7789_240_320/build/compile_commands.json",
+            "compileCommands": "/home/liu/Desktop/customer/customer_demos/LCD/SPI/GC9A01_240_240_Round/build/compile_commands.json",
             "mergeConfigurations": true
         }
     ],
