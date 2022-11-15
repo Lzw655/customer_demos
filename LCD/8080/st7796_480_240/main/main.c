@@ -28,7 +28,7 @@ static lv_disp_drv_t disp_drv;
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define LCD_PIXEL_CLOCK_HZ      (20 * 1000 * 1000)
 #define LCD_BK_LIGHT_ON_LEVEL   (1)
-#define LCD_BK_LIGHT_OFF_LEVEL  (!EXAMPLE_LCD_BK_LIGHT_ON_LEVEL)
+#define LCD_BK_LIGHT_OFF_LEVEL  (!LCD_BK_LIGHT_ON_LEVEL)
 
 #define PIN_NUM_LCD_WR          (GPIO_NUM_3)
 #define PIN_NUM_LCD_CS          (GPIO_NUM_17)
@@ -109,14 +109,14 @@ void app_main(void)
             PIN_NUM_LCD_DATA5,
             PIN_NUM_LCD_DATA6,
             PIN_NUM_LCD_DATA7,
-            PIN_NUM_LCD_DATA8,
-            PIN_NUM_LCD_DATA9,
-            PIN_NUM_LCD_DATA10,
-            PIN_NUM_LCD_DATA11,
-            PIN_NUM_LCD_DATA12,
-            PIN_NUM_LCD_DATA13,
-            PIN_NUM_LCD_DATA14,
-            PIN_NUM_LCD_DATA15,
+            // PIN_NUM_LCD_DATA8,
+            // PIN_NUM_LCD_DATA9,
+            // PIN_NUM_LCD_DATA10,
+            // PIN_NUM_LCD_DATA11,
+            // PIN_NUM_LCD_DATA12,
+            // PIN_NUM_LCD_DATA13,
+            // PIN_NUM_LCD_DATA14,
+            // PIN_NUM_LCD_DATA15,
         },
     };
     esp_lcd_i80_bus_handle_t i80_bus;
